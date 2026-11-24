@@ -16,6 +16,29 @@ jobs:
       - name: Check out fork
         uses: actions/checkout@v4
 
+      - name: Validate the Episode 1.1 script input
+        working-directory: .
+        run: |
+          mkdir -p "$RUNNER_TEMP/test-results"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const input = JSON.parse(fs.readFileSync('tests/fixtures/episode-1-1-script.json', 'utf8'));
+          const counts = input.script.map((line, i) => ({ scene: i + 1, words: line.trim().split(/\\s+/).length }));
+          const result = {
+            episode: input.episode,
+            duration_seconds: input.duration_seconds,
+            scene_duration_seconds: input.scene_duration_seconds,
+            expected_scenes: 12,
+            actual_scenes: input.script.length,
+            word_counts: counts,
+            below_10_word_target: counts.filter(x => x.words < 10).map(x => x.scene),
+            status: input.script.length === 12 && input.duration_seconds === 60 && input.scene_duration_seconds === 5 ? 'PASS' : 'FAIL'
+          };
+          fs.writeFileSync(process.env.RUNNER_TEMP + '/test-results/script-qc.json', JSON.stringify(result, null, 2));
+          console.log(JSON.stringify(result, null, 2));
+          if (result.status !== 'PASS') process.exit(1);
+          NODE
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
