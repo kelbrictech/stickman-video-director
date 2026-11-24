@@ -1,0 +1,88 @@
+name: Episode 1.1 — B1 smoke test
+
+on:
+  push:
+    branches:
+      - test/episode-1-1-b1-smoke
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  b1-preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out fork
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: skills/directing-stickman-videos/package-lock.json
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install runtime dependencies
+        working-directory: skills/directing-stickman-videos
+        run: npm ci
+
+      - name: Run runtime diagnostics
+        id: doctor
+        working-directory: skills/directing-stickman-videos
+        continue-on-error: true
+        run: node scripts/autopilot.mjs doctor | tee "$RUNNER_TEMP/doctor.json"
+
+      - name: Run automated test suite
+        id: tests
+        working-directory: skills/directing-stickman-videos
+        continue-on-error: true
+        run: npm test 2>&1 | tee "$RUNNER_TEMP/npm-test.log"
+
+      - name: Resolve B1 portrait workflow and initialize Episode 1.1 project
+        id: project
+        working-directory: skills/directing-stickman-videos
+        continue-on-error: true
+        run: |
+          mkdir -p "$RUNNER_TEMP/episode-1-1-project" "$RUNNER_TEMP/test-results"
+          node scripts/autopilot.mjs workflow --style B1 --ratio 9:16 | tee "$RUNNER_TEMP/workflow.json"
+          rm -rf "$RUNNER_TEMP/episode-1-1-project"
+          node scripts/autopilot.mjs init "$RUNNER_TEMP/episode-1-1-project" --style B1 --ratio 9:16 | tee "$RUNNER_TEMP/init.json"
+          cp "$GITHUB_WORKSPACE/tests/fixtures/episode-1-1-script.json" "$RUNNER_TEMP/test-results/"
+          cp "$RUNNER_TEMP/episode-1-1-project/project.json" "$RUNNER_TEMP/test-results/"
+          cp "$RUNNER_TEMP/doctor.json" "$RUNNER_TEMP/test-results/" 2>/dev/null || true
+          cp "$RUNNER_TEMP/npm-test.log" "$RUNNER_TEMP/test-results/" 2>/dev/null || true
+          cp "$RUNNER_TEMP/workflow.json" "$RUNNER_TEMP/test-results/" 2>/dev/null || true
+          cp "$RUNNER_TEMP/init.json" "$RUNNER_TEMP/test-results/" 2>/dev/null || true
+
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: episode-1-1-b1-smoke-test
+          path: |
+            ${{ runner.temp }}/test-results
+            ${{ runner.temp }}/doctor.json
+            ${{ runner.temp }}/npm-test.log
+            ${{ runner.temp }}/workflow.json
+            ${{ runner.temp }}/init.json
+          if-no-files-found: warn
+
+      - name: Summarize scope
+        if: always()
+        run: |
+          {
+            echo "## Episode 1.1 — B1 preflight"
+            echo ""
+            echo "- Input: original 12-line Taglish Episode 1.1 script."
+            echo "- Target: B1 Minimal Line Art, native portrait 9:16, 30 fps."
+            echo "- Checked: runtime diagnostics, automated tests, workflow resolution and project initialization."
+            echo "- This smoke test does not synthesize narration or artwork and does not claim an MP4 render. The renderer requires authored shots/assets, approved narration WAV, aligned captions and the style's sound/review inputs."
+            echo ""
+            echo "Review the uploaded `episode-1-1-b1-smoke-test` artifact for logs and project scaffold."
+          } >> "$GITHUB_STEP_SUMMARY"
